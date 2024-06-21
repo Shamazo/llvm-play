@@ -1,0 +1,2 @@
+# LLVM Playground
+This repo is just for my playing around with LLVM, primarily creating a simple custom JIT. The included VSCode dev container mostly works on M1 macs with Rossetta to run the dev container in x86 mode, but GDB is not entirely functional and perf does not work. The MakeFile uses `llvm-config` to set compile/link flags. Currently the path to `llvm-config` is hardcoded to `/usr/lib/llvm-17/bin/llvm-config`, but this can be changed to work with other install locations. 

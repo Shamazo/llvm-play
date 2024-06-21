@@ -1,0 +1,34 @@
+{
+    "build": {
+        "dockerfile": "./Dockerfile",
+        "context": "."
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "installZsh": "true",
+            "username": "vscode",
+            "upgradePackages": "true"
+        }
+    },
+    "runArgs": [
+        "--platform=linux/amd64",
+        "--security-opt=seccomp:unconfined",
+        "--cap-add=SYS_PTRACE",
+        "--privileged"
+    ],
+    // Use 'forwardPorts' to make a list of ports inside the container available locally.
+    // "forwardPorts": [],
+    // Use 'postCreateCommand' to run commands after the container is created.
+    // "postCreateCommand": "uname -a",
+    // Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
+    "remoteUser": "vscode",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "webfreak.debug",
+                "ms-vscode.makefile-tools",
+                "ms-vscode.cpptools"
+            ]
+        }
+    }
+}

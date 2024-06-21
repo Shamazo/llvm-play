@@ -1,0 +1,8 @@
+*.o
+*.so
+*.a
+main
+generated_code/*
+scratch.md
+.vscode/launch.json
+.DS_Store
