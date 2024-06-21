@@ -20,13 +20,16 @@
 
 class MyJIT {
  private:
+  const bool print_generated_code = true;
   llvm::orc::ExecutionSession ES;
   llvm::orc::JITTargetMachineBuilder JTMB;
   llvm::DataLayout DL;
   llvm::orc::MangleAndInterner Mangle;
   llvm::orc::RTDyldObjectLinkingLayer LinkingLayer;
   llvm::orc::IRCompileLayer CompileLayer;
+  llvm::orc::IRTransformLayer PrintOptimizedIRLayer;
   llvm::orc::IRTransformLayer TransformLayer;
+  llvm::orc::IRTransformLayer PrintGeneratedIRLayer;
   llvm::orc::JITDylib &MainJD;
 
  public:
@@ -39,7 +42,17 @@ class MyJIT {
         Mangle(ES, DL),
         LinkingLayer(ES, []() { return std::make_unique<llvm::SectionMemoryManager>(); }),
         CompileLayer(ES, LinkingLayer, std::make_unique<llvm::orc::ConcurrentIRCompiler>(JTMB)),
-        TransformLayer(ES, CompileLayer,
+        PrintOptimizedIRLayer(
+            ES, CompileLayer,
+            [print_generated_code = this->print_generated_code](
+                llvm::orc::ThreadSafeModule TSM, const llvm::orc::MaterializationResponsibility &R)
+                -> llvm::Expected<llvm::orc::ThreadSafeModule> {
+              if (print_generated_code) {
+                return printIR(std::move(TSM), "_opt");
+              }
+              return std::move(TSM);
+            }),
+        TransformLayer(ES, PrintOptimizedIRLayer,
                        [TM = JTMB.createTargetMachine()](
                            llvm::orc::ThreadSafeModule TSM,
                            const llvm::orc::MaterializationResponsibility &R) mutable
@@ -47,6 +60,16 @@ class MyJIT {
                          if (!TM) return TM.takeError();
                          return optimizeModule(std::move(TSM), std::move(TM.get()));
                        }),
+        PrintGeneratedIRLayer(
+            ES, TransformLayer,
+            [print_generated_code = this->print_generated_code](
+                llvm::orc::ThreadSafeModule TSM, const llvm::orc::MaterializationResponsibility &R)
+                -> llvm::Expected<llvm::orc::ThreadSafeModule> {
+              if (print_generated_code) {
+                return printIR(std::move(TSM), "");
+              }
+              return std::move(TSM);
+            }),
         MainJD(ES.createBareJITDylib("<main>")) {
     MainJD.addGenerator(llvm::cantFail(
         llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(DL.getGlobalPrefix())));
@@ -66,7 +89,7 @@ class MyJIT {
                                                  llvm::inconvertibleErrorCode());
     }
 
-    return TransformLayer.add(MainJD, std::move(TSM));
+    return PrintGeneratedIRLayer.add(MainJD, std::move(TSM));
   }
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> lookup(llvm::StringRef Name) {
@@ -93,6 +116,21 @@ class MyJIT {
 
       // Optimize the IR
       MPM.run(M, MAM);
+    });
+    return TSM;
+  }
+
+  static llvm::Expected<llvm::orc::ThreadSafeModule> printIR(llvm::orc::ThreadSafeModule TSM,
+                                                             const std::string &suffix = "") {
+    TSM.withModuleDo([&suffix](llvm::Module &m) {
+      std::error_code EC;
+      const std::string output_directory = "generated_code/";
+      const std::string output_file = m.getName().str() + suffix + ".ll";
+      llvm::sys::fs::create_directory(output_directory, /*ignoreExisting=*/true);
+
+      llvm::raw_fd_ostream out(output_directory + output_file, EC,
+                               llvm::sys::fs::OpenFlags::OF_None);
+      m.print(out, nullptr, false, true);
     });
     return TSM;
   }
