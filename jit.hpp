@@ -17,15 +17,20 @@
 #include <llvm/ExecutionEngine/Orc/IRTransformLayer.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
+#include <llvm/ExecutionEngine/Orc/DebugUtils.h>
 
 class MyJIT {
  private:
   const bool print_generated_code = true;
+  const bool dump_compiled_object_files = true;
   llvm::orc::ExecutionSession ES;
   llvm::orc::JITTargetMachineBuilder JTMB;
   llvm::DataLayout DL;
   llvm::orc::MangleAndInterner Mangle;
   llvm::orc::RTDyldObjectLinkingLayer LinkingLayer;
+  llvm::orc::ObjectTransformLayer::TransformFunction DumpObjectTransform;
+  llvm::orc::ObjectTransformLayer DumpObjectTransformLayer;
   llvm::orc::IRCompileLayer CompileLayer;
   llvm::orc::IRTransformLayer PrintOptimizedIRLayer;
   llvm::orc::IRTransformLayer TransformLayer;
@@ -41,7 +46,20 @@ class MyJIT {
         DL(llvm::cantFail(JTMB.getDefaultDataLayoutForTarget())),
         Mangle(ES, DL),
         LinkingLayer(ES, []() { return std::make_unique<llvm::SectionMemoryManager>(); }),
-        CompileLayer(ES, LinkingLayer, std::make_unique<llvm::orc::ConcurrentIRCompiler>(JTMB)),
+        DumpObjectTransform{llvm::orc::DumpObjects("generated_code/")},
+        DumpObjectTransformLayer(ES, LinkingLayer,
+                                 [&transform = this->DumpObjectTransform,
+                                  dump_compiled_object_files = this->dump_compiled_object_files](
+                                     std::unique_ptr<llvm::MemoryBuffer> buf)
+                                     -> llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> {
+                                   if (dump_compiled_object_files) {
+                                     return transform(std::move(buf));
+                                   } else {
+                                     return std::move(buf);
+                                   }
+                                 }),
+        CompileLayer(ES, DumpObjectTransformLayer,
+                     std::make_unique<llvm::orc::ConcurrentIRCompiler>(JTMB)),
         PrintOptimizedIRLayer(
             ES, CompileLayer,
             [print_generated_code = this->print_generated_code](
