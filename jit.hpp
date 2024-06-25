@@ -19,6 +19,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
 #include <llvm/ExecutionEngine/Orc/DebugUtils.h>
+#include <llvm/ExecutionEngine/JITEventListener.h>
 
 class MyJIT {
  private:
@@ -36,6 +37,8 @@ class MyJIT {
   llvm::orc::IRTransformLayer TransformLayer;
   llvm::orc::IRTransformLayer PrintGeneratedIRLayer;
   llvm::orc::JITDylib &MainJD;
+  llvm::JITEventListener *PerfListener;
+  llvm::JITEventListener *GDBListener;
 
  public:
   MyJIT()
@@ -88,7 +91,23 @@ class MyJIT {
               }
               return std::move(TSM);
             }),
-        MainJD(ES.createBareJITDylib("<main>")) {
+        MainJD(ES.createBareJITDylib("<main>")),
+        PerfListener(llvm::JITEventListener::createPerfJITEventListener()),
+        GDBListener(llvm::JITEventListener::createGDBRegistrationListener()) {
+    if (PerfListener == nullptr) {
+      std::cout << "Could not create Perf listener. Perhaps LLVM was not "
+                   "compiled with perf support (LLVM_USE_PERF)."
+                << std::endl;
+    } else {
+      LinkingLayer.registerJITEventListener(*PerfListener);
+    }
+
+    if (GDBListener == nullptr) {
+      std::cout << "Could not create GDB listener." << std::endl;
+    } else {
+      LinkingLayer.registerJITEventListener(*GDBListener);
+    }
+
     MainJD.addGenerator(llvm::cantFail(
         llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(DL.getGlobalPrefix())));
   }
