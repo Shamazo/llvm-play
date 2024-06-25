@@ -20,9 +20,12 @@
 #include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
 #include <llvm/ExecutionEngine/Orc/DebugUtils.h>
 #include <llvm/ExecutionEngine/JITEventListener.h>
+#include "DebugIR.hpp"
 
 class MyJIT {
  private:
+  const bool insert_preopt_debug_info = true;
+  const bool insert_postopt_debug_info = false;
   const bool print_generated_code = true;
   const bool dump_compiled_object_files = true;
   llvm::orc::ExecutionSession ES;
@@ -65,11 +68,12 @@ class MyJIT {
                      std::make_unique<llvm::orc::ConcurrentIRCompiler>(JTMB)),
         PrintOptimizedIRLayer(
             ES, CompileLayer,
-            [print_generated_code = this->print_generated_code](
+            [print_generated_code = this->print_generated_code,
+             insert_debug_info = this->insert_postopt_debug_info](
                 llvm::orc::ThreadSafeModule TSM, const llvm::orc::MaterializationResponsibility &R)
                 -> llvm::Expected<llvm::orc::ThreadSafeModule> {
               if (print_generated_code) {
-                return printIR(std::move(TSM), "_opt");
+                return printIR(std::move(TSM), "_opt", insert_debug_info);
               }
               return std::move(TSM);
             }),
@@ -83,11 +87,12 @@ class MyJIT {
                        }),
         PrintGeneratedIRLayer(
             ES, TransformLayer,
-            [print_generated_code = this->print_generated_code](
+            [print_generated_code = this->print_generated_code,
+             insert_debug_info = this->insert_preopt_debug_info](
                 llvm::orc::ThreadSafeModule TSM, const llvm::orc::MaterializationResponsibility &R)
                 -> llvm::Expected<llvm::orc::ThreadSafeModule> {
               if (print_generated_code) {
-                return printIR(std::move(TSM), "");
+                return printIR(std::move(TSM), "", insert_debug_info);
               }
               return std::move(TSM);
             }),
@@ -158,8 +163,9 @@ class MyJIT {
   }
 
   static llvm::Expected<llvm::orc::ThreadSafeModule> printIR(llvm::orc::ThreadSafeModule TSM,
-                                                             const std::string &suffix = "") {
-    TSM.withModuleDo([&suffix](llvm::Module &m) {
+                                                             const std::string &suffix = "",
+                                                             bool add_debug_info = false) {
+    TSM.withModuleDo([&suffix, &add_debug_info](llvm::Module &m) {
       std::error_code EC;
       const std::string output_directory = "generated_code/";
       const std::string output_file = m.getName().str() + suffix + ".ll";
@@ -168,6 +174,9 @@ class MyJIT {
       llvm::raw_fd_ostream out(output_directory + output_file, EC,
                                llvm::sys::fs::OpenFlags::OF_None);
       m.print(out, nullptr, false, true);
+      if (add_debug_info) {
+        llvm::createDebugInfo(m, output_directory, output_file);
+      }
     });
     return TSM;
   }

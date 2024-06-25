@@ -8,10 +8,13 @@ LDLIBS = `$(LLVM_CONFIG) --libs`
 # Targets
 all: main
 
-main: main.o
+main: main.o DebugIR.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 main.o: main.cpp jit.hpp
+	$(CXX) $(CXXFLAGS) -c $<
+
+DebugIR.o: DebugIR.cpp DebugIR.hpp
 	$(CXX) $(CXXFLAGS) -c $<
 
 clean:
