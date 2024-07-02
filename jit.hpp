@@ -91,6 +91,7 @@ class MyJIT {
              insert_debug_info = this->insert_preopt_debug_info](
                 llvm::orc::ThreadSafeModule TSM, const llvm::orc::MaterializationResponsibility &R)
                 -> llvm::Expected<llvm::orc::ThreadSafeModule> {
+              TSM = nameInstructions(std::move(TSM));
               if (print_generated_code) {
                 return printIR(std::move(TSM), "", insert_debug_info);
               }
@@ -158,6 +159,28 @@ class MyJIT {
 
       // Optimize the IR
       MPM.run(M, MAM);
+    });
+    return TSM;
+  }
+
+  // based on InstructionNamerPass, but as a transform because we do not want to do any IR
+  // optimization so we can print IR that is the same as the generated IR, just with renamed
+  // instructions for readability
+  static llvm::orc::ThreadSafeModule nameInstructions(llvm::orc::ThreadSafeModule TSM) {
+    TSM.withModuleDo([](llvm::Module &M) {
+      for (auto &F : M.functions()) {
+        for (auto &Arg : F.args()) {
+          if (!Arg.hasName()) Arg.setName("arg");
+        }
+
+        for (llvm::BasicBlock &BB : F) {
+          if (!BB.hasName()) BB.setName("bb");
+
+          for (llvm::Instruction &I : BB) {
+            if (!I.hasName() && !I.getType()->isVoidTy()) I.setName("i");
+          }
+        }
+      }
     });
     return TSM;
   }
