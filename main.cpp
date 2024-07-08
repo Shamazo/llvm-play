@@ -174,13 +174,18 @@ int main() {
   auto buggy_add_symbol = ExitOnErr(TheJIT->lookup("buggyAdd"));
   int (*buggy_add_fp)(int, int) = buggy_add_symbol.getAddress().toPtr<int (*)(int, int)>();
 
-  int* arr = new int[1024];
-  for (int i = 0; i < 1024; i++) {
+  constexpr int KiB = 1024;
+  constexpr int arr_size = 128 * KiB;
+  int* arr = new int[arr_size];
+  for (int i = 0; i < arr_size; i++) {
     arr[i] = i + 1;
   }
 
   std::cout << "Adding 1+2 = " << add_fp(1, 2) << std::endl;
-  std::cout << "sum of {1, 2, ... 1024} = " << array_sum_fp(arr, 1024) << std::endl;
+  // for profiling, run this in a loop so it uses more CPU time relative to the rest of the program
+  // for (size_t i = 0; i < 10000; i++) {
+  std::cout << "sum of {1, 2, ... 131072} = " << array_sum_fp(arr, arr_size) << std::endl;
+  // }
   std::cout << "(with bugs) adding 1+2 = " << buggy_add_fp(1, 2) << std::endl;
 
   return 0;
